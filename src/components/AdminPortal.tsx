@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { User, Product, Category, Coupon, AuditLog } from '../types.js';
+import { useToast } from '../context/ToastContext.tsx';
 import { 
   CheckCircle, XCircle, Users, Package, ShoppingCart, Percent, FolderPlus, 
-  Trash, ShieldAlert, Ban, Unlock, RefreshCw, KeyRound, Search, Eye, FileSpreadsheet, FileText
+  Trash, ShieldAlert, Ban, Unlock, RefreshCw, KeyRound, Search, Eye, FileSpreadsheet, FileText,
+  Upload, Link as LinkIcon, Image as ImageIcon, Sparkles
 } from 'lucide-react';
 
 interface AdminPortalProps {
@@ -10,6 +12,7 @@ interface AdminPortalProps {
 }
 
 export default function AdminPortal({ currentUser }: AdminPortalProps) {
+  const { success, error, info, warning, promptDialog, confirmDialog } = useToast();
   const [activeTab, setActiveTab] = useState<'overview' | 'approvals' | 'users' | 'categories' | 'coupons'>('overview');
   const [stats, setStats] = useState<any>(null);
   const [pendingProducts, setPendingProducts] = useState<Product[]>([]);
@@ -24,7 +27,65 @@ export default function AdminPortal({ currentUser }: AdminPortalProps) {
 
   // Category addition fields
   const [newCatName, setNewCatName] = useState('');
+  const [catImageMode, setCatImageMode] = useState<'url' | 'file'>('url');
   const [newCatImage, setNewCatImage] = useState('https://images.unsplash.com/photo-1513694203232-719a280e022f?w=600&auto=format&fit=crop&q=60');
+  const [uploadedFileName, setUploadedFileName] = useState<string>('');
+  const [isProcessingImage, setIsProcessingImage] = useState(false);
+
+  const compressImageFile = (file: File, maxWidth = 800, quality = 0.85): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onerror = () => resolve('');
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onerror = () => resolve((event.target?.result as string) || '');
+        img.onload = () => {
+          let width = img.width;
+          let height = img.height;
+          if (width > maxWidth || height > maxWidth) {
+            if (width > height) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            } else {
+              width = Math.round((width * maxWidth) / height);
+              height = maxWidth;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve((event.target?.result as string) || '');
+            return;
+          }
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
+          resolve(compressedBase64);
+        };
+        img.src = (event.target?.result as string) || '';
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleCategoryFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsProcessingImage(true);
+    try {
+      setUploadedFileName(file.name);
+      const base64 = await compressImageFile(file, 800, 0.85);
+      if (base64) {
+        setNewCatImage(base64);
+        success(`Image "${file.name}" processed successfully!`, 'Image Uploaded');
+      }
+    } catch (err) {
+      error('Failed to process image file.');
+    } finally {
+      setIsProcessingImage(false);
+    }
+  };
 
   // Coupon addition fields
   const [coupCode, setCoupCode] = useState('');
@@ -76,15 +137,25 @@ export default function AdminPortal({ currentUser }: AdminPortalProps) {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('mumbai_bazar_token')}` }
       });
       if (res.ok) {
+        success('Product approved and published to store catalog.', 'Product Approved');
         fetchAdminData();
+      } else {
+        const data = await res.json();
+        error(data.error || 'Failed to approve product.');
       }
     } catch (err) {
       console.error(err);
+      error('Error approving product.');
     }
   };
 
   const handleRejectProduct = async (productId: string) => {
-    const reason = prompt('Specify rejection feedback comments for the vendor:');
+    const reason = await promptDialog(
+      'Specify rejection feedback comments for the vendor:',
+      'Reject Product Listing',
+      'Does not meet our catalog listing guidelines.',
+      'Enter feedback reason...'
+    );
     if (reason === null) return; // cancelled
     try {
       const res = await fetch(`/api/products/${productId}/reject`, {
@@ -96,10 +167,15 @@ export default function AdminPortal({ currentUser }: AdminPortalProps) {
         body: JSON.stringify({ reason: reason || 'Does not meet our catalog listing guidelines.' })
       });
       if (res.ok) {
+        info('Product listing rejected with feedback note.', 'Product Rejected');
         fetchAdminData();
+      } else {
+        const data = await res.json();
+        error(data.error || 'Failed to reject product.');
       }
     } catch (err) {
       console.error(err);
+      error('Error rejecting product.');
     }
   };
 
@@ -116,16 +192,30 @@ export default function AdminPortal({ currentUser }: AdminPortalProps) {
         body: JSON.stringify({ isBlocked })
       });
       if (res.ok) {
+        if (isBlocked) {
+          warning(`User ${user.name} has been suspended/blocked.`, 'User Blocked');
+        } else {
+          success(`User ${user.name} has been unblocked.`, 'User Unblocked');
+        }
         fetchAdminData();
+      } else {
+        const data = await res.json();
+        error(data.error || 'Failed to update user status.');
       }
     } catch (err) {
       console.error(err);
+      error('Error updating user status.');
     }
   };
 
   // Reset password
   const handleResetPassword = async (userId: string) => {
-    const newPassword = prompt('Set new password for this user account:');
+    const newPassword = await promptDialog(
+      'Set a new password for this user account:',
+      'Reset User Password',
+      '',
+      'Enter new secure password...'
+    );
     if (!newPassword) return;
     try {
       const res = await fetch(`/api/admin/users/${userId}/reset-password`, {
@@ -137,17 +227,28 @@ export default function AdminPortal({ currentUser }: AdminPortalProps) {
         body: JSON.stringify({ newPassword })
       });
       if (res.ok) {
-        alert('Password reset successfully.');
+        success('Password has been reset successfully.', 'Password Updated');
+      } else {
+        const data = await res.json();
+        error(data.error || 'Failed to reset password.');
       }
     } catch (err) {
       console.error(err);
+      error('Error resetting password.');
     }
   };
 
   // Category addition
   const handleAddCategory = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newCatName.trim()) return;
+    if (!newCatName.trim()) {
+      error('Please enter a category name.');
+      return;
+    }
+    if (!newCatImage.trim()) {
+      error('Please provide a category image (URL or upload file).');
+      return;
+    }
 
     try {
       const res = await fetch('/api/categories', {
@@ -156,17 +257,21 @@ export default function AdminPortal({ currentUser }: AdminPortalProps) {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('mumbai_bazar_token')}`
         },
-        body: JSON.stringify({ name: newCatName, image: newCatImage })
+        body: JSON.stringify({ name: newCatName.trim(), image: newCatImage.trim() })
       });
       if (res.ok) {
+        success(`Category "${newCatName.trim()}" created successfully.`, 'Category Added');
         setNewCatName('');
+        setNewCatImage('https://images.unsplash.com/photo-1513694203232-719a280e022f?w=600&auto=format&fit=crop&q=60');
+        setUploadedFileName('');
         fetchAdminData();
       } else {
         const data = await res.json();
-        alert(data.error || 'Failed to add category');
+        error(data.error || 'Failed to add category');
       }
     } catch (err) {
       console.error(err);
+      error('Error creating category.');
     }
   };
 
@@ -178,7 +283,9 @@ export default function AdminPortal({ currentUser }: AdminPortalProps) {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${localStorage.getItem('mumbai_bazar_token')}` }
       });
-      if (!res.ok) {
+      if (res.ok) {
+        info('Category deleted from catalog.', 'Category Removed');
+      } else {
         fetchAdminData();
       }
     } catch (err) {
@@ -208,16 +315,18 @@ export default function AdminPortal({ currentUser }: AdminPortalProps) {
         })
       });
       if (res.ok) {
+        success(`Coupon "${coupCode.toUpperCase()}" added successfully.`, 'Coupon Created');
         setCoupCode('');
         setCoupVal('');
         setCoupExpiry('');
         fetchAdminData();
       } else {
         const data = await res.json();
-        alert(data.error || 'Failed to add coupon code');
+        error(data.error || 'Failed to add coupon code');
       }
     } catch (err) {
       console.error(err);
+      error('Error creating coupon.');
     }
   };
 
@@ -229,7 +338,9 @@ export default function AdminPortal({ currentUser }: AdminPortalProps) {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${localStorage.getItem('mumbai_bazar_token')}` }
       });
-      if (!res.ok) {
+      if (res.ok) {
+        info('Coupon removed successfully.', 'Coupon Deleted');
+      } else {
         fetchAdminData();
       }
     } catch (err) {
@@ -831,7 +942,11 @@ export default function AdminPortal({ currentUser }: AdminPortalProps) {
                 
                 {/* Addition Form */}
                 <div className="bg-white dark:bg-zinc-900 border rounded-2xl p-6 shadow-sm h-fit space-y-4">
-                  <h3 className="text-sm font-extrabold uppercase text-stone-850 dark:text-zinc-200 pb-2 border-b">Add Category</h3>
+                  <h3 className="text-sm font-extrabold uppercase text-stone-850 dark:text-zinc-200 pb-2 border-b flex items-center justify-between">
+                    <span>Add Category</span>
+                    <span className="text-[10px] font-normal text-stone-400 capitalize">Catalog Management</span>
+                  </h3>
+                  
                   <form onSubmit={handleAddCategory} className="space-y-4 text-xs">
                     <div>
                       <label className="block font-bold text-stone-500 uppercase mb-1">Category Name *</label>
@@ -841,21 +956,159 @@ export default function AdminPortal({ currentUser }: AdminPortalProps) {
                         placeholder="E.g. Spices & Organic Herbs"
                         value={newCatName}
                         onChange={(e) => setNewCatName(e.target.value)}
-                        className="w-full p-2.5 bg-stone-50 dark:bg-zinc-850 border border-stone-200 dark:border-zinc-800 rounded-xl text-stone-850 dark:text-white"
+                        className="w-full p-2.5 bg-stone-50 dark:bg-zinc-850 border border-stone-200 dark:border-zinc-800 rounded-xl text-stone-850 dark:text-white placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
                       />
                     </div>
+
+                    {/* Image Option Selector (URL vs Upload File) */}
                     <div>
-                      <label className="block font-bold text-stone-500 uppercase mb-1">Thumbnail Image URL *</label>
-                      <input
-                        type="text"
-                        required
-                        value={newCatImage}
-                        onChange={(e) => setNewCatImage(e.target.value)}
-                        className="w-full p-2.5 bg-stone-50 dark:bg-zinc-850 border border-stone-200 dark:border-zinc-800 rounded-xl text-stone-850 dark:text-white"
-                      />
+                      <label className="block font-bold text-stone-500 uppercase mb-2">Category Image *</label>
+                      
+                      {/* Segmented Mode Switch */}
+                      <div className="grid grid-cols-2 gap-1 p-1 bg-stone-100 dark:bg-zinc-800 rounded-xl mb-3">
+                        <button
+                          type="button"
+                          onClick={() => setCatImageMode('url')}
+                          className={`py-1.5 px-2.5 rounded-lg font-bold text-[11px] flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                            catImageMode === 'url'
+                              ? 'bg-white dark:bg-zinc-900 text-stone-900 dark:text-white shadow-sm'
+                              : 'text-stone-500 dark:text-zinc-400 hover:text-stone-800'
+                          }`}
+                        >
+                          <LinkIcon className="w-3.5 h-3.5" />
+                          <span>Image URL</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCatImageMode('file')}
+                          className={`py-1.5 px-2.5 rounded-lg font-bold text-[11px] flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                            catImageMode === 'file'
+                              ? 'bg-white dark:bg-zinc-900 text-stone-900 dark:text-white shadow-sm'
+                              : 'text-stone-500 dark:text-zinc-400 hover:text-stone-800'
+                          }`}
+                        >
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>Upload Image</span>
+                        </button>
+                      </div>
+
+                      {/* Mode 1: URL Input */}
+                      {catImageMode === 'url' && (
+                        <div className="space-y-1.5 animate-fade-in">
+                          <div className="relative">
+                            <input
+                              type="text"
+                              required
+                              placeholder="https://images.unsplash.com/..."
+                              value={newCatImage.startsWith('data:image') ? '' : newCatImage}
+                              onChange={(e) => {
+                                setNewCatImage(e.target.value);
+                                setUploadedFileName('');
+                              }}
+                              className="w-full p-2.5 bg-stone-50 dark:bg-zinc-850 border border-stone-200 dark:border-zinc-800 rounded-xl text-stone-850 dark:text-white font-mono text-[11px] placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 pr-8"
+                            />
+                            {newCatImage && !newCatImage.startsWith('data:image') && (
+                              <button
+                                type="button"
+                                onClick={() => setNewCatImage('')}
+                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600"
+                                title="Clear URL"
+                              >
+                                &times;
+                              </button>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-stone-400">Paste direct image link from Unsplash, CDN, or web source.</p>
+                        </div>
+                      )}
+
+                      {/* Mode 2: File Upload (Choose File) */}
+                      {catImageMode === 'file' && (
+                        <div className="space-y-2 animate-fade-in">
+                          <input
+                            type="file"
+                            id="cat-image-file-input"
+                            accept="image/png, image/jpeg, image/jpg, image/webp, image/svg+xml"
+                            onChange={handleCategoryFileChange}
+                            className="hidden"
+                          />
+                          
+                          <label
+                            htmlFor="cat-image-file-input"
+                            className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-stone-200 dark:border-zinc-700 hover:border-amber-500 dark:hover:border-amber-500 rounded-xl bg-stone-50/60 dark:bg-zinc-850/60 hover:bg-amber-50/30 dark:hover:bg-amber-950/20 transition-all cursor-pointer group text-center"
+                          >
+                            <div className="w-9 h-9 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-600 flex items-center justify-center mb-2 group-hover:scale-105 transition-transform">
+                              {isProcessingImage ? (
+                                <RefreshCw className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Upload className="w-4 h-4" />
+                              )}
+                            </div>
+                            <div className="space-y-1">
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500 hover:bg-amber-600 text-stone-950 font-bold text-[11px] rounded-lg shadow-sm">
+                                Choose File
+                              </span>
+                              <p className="text-[10px] text-stone-500 dark:text-zinc-400 mt-1">
+                                {uploadedFileName ? (
+                                  <span className="font-semibold text-amber-600 dark:text-amber-400 truncate max-w-[200px] inline-block">{uploadedFileName}</span>
+                                ) : (
+                                  'JPG, PNG, WebP, SVG up to 10MB'
+                                )}
+                              </p>
+                            </div>
+                          </label>
+                        </div>
+                      )}
                     </div>
-                    <button type="submit" className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-stone-950 font-bold rounded-xl cursor-pointer">
-                      Save Category
+
+                    {/* Live Image Preview Card */}
+                    {newCatImage && (
+                      <div className="p-3 bg-stone-50 dark:bg-zinc-850/80 border border-stone-200 dark:border-zinc-800 rounded-xl space-y-2">
+                        <div className="flex items-center justify-between text-[10px] font-bold text-stone-500 uppercase">
+                          <span className="flex items-center gap-1">
+                            <ImageIcon className="w-3 h-3 text-amber-500" />
+                            Image Preview
+                          </span>
+                          <span className="text-emerald-600 font-mono text-[9px] bg-emerald-50 dark:bg-emerald-950/50 px-1.5 py-0.5 rounded">
+                            {newCatImage.startsWith('data:image') ? 'Uploaded File' : 'URL Link'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <div className="w-14 h-14 rounded-lg overflow-hidden border border-stone-200 dark:border-zinc-700 bg-stone-100 flex-shrink-0">
+                            <img
+                              src={newCatImage}
+                              alt="Category Preview"
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1513694203232-719a280e022f?w=600&auto=format&fit=crop&q=60';
+                              }}
+                            />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-bold text-stone-850 dark:text-white truncate">
+                              {newCatName || 'Category Name Preview'}
+                            </p>
+                            <p className="text-[10px] text-stone-400 font-mono truncate">
+                              {newCatName ? newCatName.toLowerCase().replace(/[^a-z0-9]+/g, '-') : 'slug-preview'}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    <button 
+                      type="submit" 
+                      disabled={isProcessingImage || !newCatName.trim()}
+                      className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-stone-950 font-bold rounded-xl cursor-pointer transition-all shadow-sm flex items-center justify-center gap-2"
+                    >
+                      {isProcessingImage ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          <span>Processing Image...</span>
+                        </>
+                      ) : (
+                        <span>Save Category</span>
+                      )}
                     </button>
                   </form>
                 </div>

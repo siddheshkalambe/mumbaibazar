@@ -21,14 +21,24 @@ initMongoAndSync();
 // Initialize Google Cloud Firestore if configuration exists
 initFirestoreAndSync();
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
+// Server initialization
 const app = express();
-const PORT = 3000;
 
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ limit: '10mb', extended: true }));
+// Determine listening port:
+// 1. When DEFAULT_APP_PORT is present (AI Studio sandbox reverse proxy), bind to DEFAULT_APP_PORT (3000)
+// 2. When deployed to standalone Google Cloud Run, bind to process.env.PORT (8080)
+// 3. Default fallback to 3000 for local environment
+const PORT = process.env.DEFAULT_APP_PORT 
+  ? Number(process.env.DEFAULT_APP_PORT) 
+  : (process.env.PORT ? Number(process.env.PORT) : 3000);
+
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+// Cloud Run and GCP Load Balancer Health Probes
+app.get(['/api/health', '/health'], (req, res) => {
+  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+});
 
 // Helper to extract JWT user
 function authenticate(req: any, res: any, next: any) {
@@ -322,138 +332,166 @@ app.get('/api/products/:id', (req, res) => {
 
 // GET all products (Admin & Seller view including draft, pending, rejected)
 app.get('/api/products-all', requireAuth, (req: any, res) => {
-  const products = getProducts();
-  if (req.user.role === 'seller') {
-    // Only return products matching seller
-    const sellerProducts = products.filter(p => p.sellerId === req.user.id);
-    return res.json(sellerProducts);
-  } else if (['admin', 'super_admin'].includes(req.user.role)) {
-    return res.json(products);
+  try {
+    const products = getProducts() || [];
+    if (!req.user) {
+      return res.status(401).json({ error: "Unauthorized access. Please login first." });
+    }
+    if (req.user.role === 'seller') {
+      // Only return products matching seller
+      const sellerProducts = products.filter(p => p && p.sellerId === req.user.id);
+      return res.json(sellerProducts);
+    } else if (['admin', 'super_admin'].includes(req.user.role)) {
+      return res.json(products);
+    }
+    return res.status(403).json({ error: "Unauthorized access." });
+  } catch (err: any) {
+    console.error("Error in GET /api/products-all:", err);
+    return res.status(500).json({ error: "Server error fetching products." });
   }
-  res.status(403).json({ error: "Unauthorized access." });
 });
 
 // POST add product (Seller)
 app.post('/api/products', requireRole(['seller', 'admin', 'super_admin']), (req: any, res) => {
-  const { 
-    title, description, category, subCategory, brand, sku, price, discount, 
-    stock, weight, dimensions, images, primaryImage, tags, colors, sizes, specifications, 
-    warranty, returnPolicy 
-  } = req.body;
+  try {
+    const { 
+      title, description, category, subCategory, brand, sku, price, discount, 
+      stock, weight, dimensions, images, primaryImage, tags, colors, sizes, specifications, 
+      warranty, returnPolicy 
+    } = req.body;
 
-  if (!title || !category || !price || stock === undefined || !primaryImage) {
-    return res.status(400).json({ error: "Missing required product details." });
+    if (!title || !category || price === undefined || price === null || stock === undefined || stock === null) {
+      return res.status(400).json({ error: "Missing required product details (title, category, price, stock)." });
+    }
+
+    const validImages = Array.isArray(images) && images.length > 0 
+      ? images 
+      : [primaryImage || "https://images.unsplash.com/photo-1596797038530-2c107229654b?w=600&auto=format&fit=crop&q=60"];
+    const validPrimary = primaryImage || validImages[0];
+
+    const newProduct: Product = {
+      id: `prod-${Date.now()}-${Math.floor(Math.random()*1000)}`,
+      title: String(title).trim(),
+      description: description ? String(description) : "",
+      category: String(category),
+      subCategory: subCategory ? String(subCategory) : "",
+      brand: brand ? String(brand) : "Generic",
+      sku: sku ? String(sku) : `SKU-${Math.floor(Math.random()*1000000)}`,
+      price: Number(price) || 0,
+      discount: Number(discount || 0),
+      stock: Number(stock) || 0,
+      weight: weight ? String(weight) : "",
+      dimensions: dimensions ? String(dimensions) : "",
+      images: validImages,
+      primaryImage: validPrimary,
+      tags: Array.isArray(tags) ? tags : [],
+      colors: Array.isArray(colors) ? colors : ["Default"],
+      sizes: Array.isArray(sizes) ? sizes : ["Standard"],
+      specifications: Array.isArray(specifications) ? specifications : [],
+      warranty: warranty ? String(warranty) : "No warranty",
+      returnPolicy: returnPolicy ? String(returnPolicy) : "No returns",
+      status: req.user.role === 'seller' ? 'Pending' : 'Approved', // Admins bypass approvals
+      sellerId: req.user.id,
+      sellerName: req.user.name || "Seller",
+      rating: 5.0,
+      reviews: [],
+      createdAt: new Date().toISOString()
+    };
+
+    addProduct(newProduct);
+    addAuditLog(req.user.id, req.user.name, req.user.role, "Product Created", `Created product: ${title} (${newProduct.sku})`);
+    
+    if (req.user.role === 'seller') {
+      // Notify Admins
+      addNotification("", "admin", "New Product for Review", `${req.user.name} uploaded a new product: "${title}" awaiting approval.`, "product_approval");
+    }
+
+    return res.status(201).json(newProduct);
+  } catch (err: any) {
+    console.error("Error creating product:", err);
+    return res.status(500).json({ error: "Internal server error creating product." });
   }
-
-  const newProduct: Product = {
-    id: `prod-${Date.now()}-${Math.floor(Math.random()*1000)}`,
-    title,
-    description: description || "",
-    category,
-    subCategory: subCategory || "",
-    brand: brand || "Generic",
-    sku: sku || `SKU-${Math.floor(Math.random()*1000000)}`,
-    price: Number(price),
-    discount: Number(discount || 0),
-    stock: Number(stock),
-    weight: weight || "",
-    dimensions: dimensions || "",
-    images: images || [primaryImage],
-    primaryImage,
-    tags: tags || [],
-    colors: colors || ["Default"],
-    sizes: sizes || ["Standard"],
-    specifications: specifications || [],
-    warranty: warranty || "No warranty",
-    returnPolicy: returnPolicy || "No returns",
-    status: req.user.role === 'seller' ? 'Pending' : 'Approved', // Admins bypass approvals
-    sellerId: req.user.id,
-    sellerName: req.user.name,
-    rating: 5.0,
-    reviews: [],
-    createdAt: new Date().toISOString()
-  };
-
-  addProduct(newProduct);
-  addAuditLog(req.user.id, req.user.name, req.user.role, "Product Created", `Created product: ${title} (${newProduct.sku})`);
-  
-  if (req.user.role === 'seller') {
-    // Notify Admins
-    addNotification("", "admin", "New Product for Review", `${req.user.name} uploaded a new product: "${title}" awaiting approval.`, "product_approval");
-  }
-
-  res.status(201).json(newProduct);
 });
 
 // PUT edit product
 app.put('/api/products/:id', requireRole(['seller', 'admin', 'super_admin']), (req: any, res) => {
-  const products = getProducts();
-  const product = products.find(p => p.id === req.params.id);
-  if (!product) {
-    return res.status(404).json({ error: "Product not found." });
+  try {
+    const products = getProducts() || [];
+    const product = products.find(p => p && p.id === req.params.id);
+    if (!product) {
+      return res.status(404).json({ error: "Product not found." });
+    }
+
+    if (req.user.role === 'seller' && product.sellerId !== req.user.id) {
+      return res.status(403).json({ error: "You do not own this product." });
+    }
+
+    const { 
+      title, description, category, subCategory, brand, sku, price, discount, 
+      stock, weight, dimensions, images, primaryImage, tags, colors, sizes, specifications, 
+      warranty, returnPolicy, status 
+    } = req.body;
+
+    const updates: Partial<Product> = {};
+    if (title) updates.title = String(title).trim();
+    if (description !== undefined) updates.description = String(description);
+    if (category) updates.category = String(category);
+    if (subCategory !== undefined) updates.subCategory = String(subCategory);
+    if (brand) updates.brand = String(brand);
+    if (sku) updates.sku = String(sku);
+    if (price !== undefined) updates.price = Number(price) || 0;
+    if (discount !== undefined) updates.discount = Number(discount) || 0;
+    if (stock !== undefined) updates.stock = Number(stock) || 0;
+    if (weight !== undefined) updates.weight = String(weight);
+    if (dimensions !== undefined) updates.dimensions = String(dimensions);
+    if (Array.isArray(images) && images.length > 0) updates.images = images;
+    if (primaryImage) updates.primaryImage = String(primaryImage);
+    if (Array.isArray(tags)) updates.tags = tags;
+    if (Array.isArray(colors)) updates.colors = colors;
+    if (Array.isArray(sizes)) updates.sizes = sizes;
+    if (Array.isArray(specifications)) updates.specifications = specifications;
+    if (warranty !== undefined) updates.warranty = String(warranty);
+    if (returnPolicy !== undefined) updates.returnPolicy = String(returnPolicy);
+
+    // If a seller edits a product, it goes back into "Pending" review
+    if (req.user.role === 'seller') {
+      updates.status = 'Pending';
+      addNotification("", "admin", "Product Edited & Resubmitted", `${req.user.name} edited "${product.title}" and needs review.`, "product_approval");
+    } else if (status) {
+      // Admin editing can directly change status
+      updates.status = status;
+    }
+
+    updateProduct(product.id, updates);
+    addAuditLog(req.user.id, req.user.name, req.user.role, "Product Edited", `Modified product: ${product.title}`);
+
+    return res.json({ message: "Product updated successfully.", product: { ...product, ...updates } });
+  } catch (err: any) {
+    console.error("Error updating product:", err);
+    return res.status(500).json({ error: "Internal server error updating product." });
   }
-
-  if (req.user.role === 'seller' && product.sellerId !== req.user.id) {
-    return res.status(403).json({ error: "You do not own this product." });
-  }
-
-  const { 
-    title, description, category, subCategory, brand, sku, price, discount, 
-    stock, weight, dimensions, images, primaryImage, tags, colors, sizes, specifications, 
-    warranty, returnPolicy, status 
-  } = req.body;
-
-  const updates: Partial<Product> = {};
-  if (title) updates.title = title;
-  if (description !== undefined) updates.description = description;
-  if (category) updates.category = category;
-  if (subCategory !== undefined) updates.subCategory = subCategory;
-  if (brand) updates.brand = brand;
-  if (sku) updates.sku = sku;
-  if (price !== undefined) updates.price = Number(price);
-  if (discount !== undefined) updates.discount = Number(discount);
-  if (stock !== undefined) updates.stock = Number(stock);
-  if (weight !== undefined) updates.weight = weight;
-  if (dimensions !== undefined) updates.dimensions = dimensions;
-  if (images) updates.images = images;
-  if (primaryImage) updates.primaryImage = primaryImage;
-  if (tags) updates.tags = tags;
-  if (colors) updates.colors = colors;
-  if (sizes) updates.sizes = sizes;
-  if (specifications) updates.specifications = specifications;
-  if (warranty !== undefined) updates.warranty = warranty;
-  if (returnPolicy !== undefined) updates.returnPolicy = returnPolicy;
-
-  // If a seller edits a product, it goes back into "Pending" review
-  if (req.user.role === 'seller') {
-    updates.status = 'Pending';
-    addNotification("", "admin", "Product Edited & Resubmitted", `${req.user.name} edited "${product.title}" and needs review.`, "product_approval");
-  } else if (status) {
-    // Admin editing can directly change status
-    updates.status = status;
-  }
-
-  updateProduct(product.id, updates);
-  addAuditLog(req.user.id, req.user.name, req.user.role, "Product Edited", `Modified product: ${product.title}`);
-
-  res.json({ message: "Product updated successfully.", product: { ...product, ...updates } });
 });
 
 // DELETE delete product
 app.delete('/api/products/:id', requireRole(['seller', 'admin', 'super_admin']), (req: any, res) => {
-  const products = getProducts();
-  const product = products.find(p => p.id === req.params.id);
-  if (!product) {
-    return res.status(404).json({ error: "Product not found." });
-  }
+  try {
+    const products = getProducts() || [];
+    const product = products.find(p => p && p.id === req.params.id);
+    if (!product) {
+      return res.status(404).json({ error: "Product not found." });
+    }
 
-  if (req.user.role === 'seller' && product.sellerId !== req.user.id) {
-    return res.status(403).json({ error: "You are not authorized to delete this product." });
-  }
+    if (req.user.role === 'seller' && product.sellerId !== req.user.id) {
+      return res.status(403).json({ error: "You are not authorized to delete this product." });
+    }
 
-  deleteProduct(product.id);
-  addAuditLog(req.user.id, req.user.name, req.user.role, "Product Deleted", `Deleted product: ${product.title}`);
-  res.json({ message: "Product deleted successfully." });
+    deleteProduct(product.id);
+    addAuditLog(req.user.id, req.user.name, req.user.role, "Product Deleted", `Deleted product: ${product.title}`);
+    return res.json({ message: "Product deleted successfully." });
+  } catch (err: any) {
+    console.error("Error deleting product:", err);
+    return res.status(500).json({ error: "Internal server error deleting product." });
+  }
 });
 
 // POST Approve product (Admin / Super Admin)
@@ -601,6 +639,12 @@ app.post('/api/orders', requireRole(['buyer']), (req: any, res) => {
     }
   }
 
+  const systemSettings = getSettings();
+  const configuredShippingFee = systemSettings?.shippingCharge ?? 50;
+  const finalDeliveryCharge = (deliveryCharge !== undefined && deliveryCharge !== null && !isNaN(Number(deliveryCharge)))
+    ? Number(deliveryCharge)
+    : configuredShippingFee;
+
   const orderId = `ord-${1000 + getOrders().length + 1}`;
   const newOrder: Order = {
     id: orderId,
@@ -611,7 +655,7 @@ app.post('/api/orders', requireRole(['buyer']), (req: any, res) => {
     billingAddress: billingAddress || shippingAddress,
     shippingAddress,
     phoneNumber,
-    deliveryCharge: Number(deliveryCharge || 50),
+    deliveryCharge: finalDeliveryCharge,
     couponCode,
     couponDiscount: Number(couponDiscount || 0),
     grandTotal: Number(grandTotal),
@@ -1087,28 +1131,48 @@ app.get('/api/analytics/dashboard', requireAuth, (req: any, res) => {
 // Vite Dev Server / Production SPA Fallback Routing
 // -------------------------------------------------------------
 
-const isProd = process.env.NODE_ENV === 'production';
+async function startServer() {
+  if (process.env.NODE_ENV !== 'production') {
+    // Developer Mode - Integrate Vite programmatically as middleware
+    const { createServer: createViteServer } = await import('vite');
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: 'spa',
+    });
+    app.use(vite.middlewares);
+  } else {
+    // Production Mode - Serve static files from /dist
+    const distPath = fs.existsSync(path.join(process.cwd(), 'dist'))
+      ? path.join(process.cwd(), 'dist')
+      : (fs.existsSync(path.join(process.cwd(), 'index.html')) ? process.cwd() : path.join(__dirname, '..', 'dist'));
+    
+    app.use(express.static(distPath));
+    
+    // SPA Fallback: Any unhandled routes serve index.html
+    app.get('*', (req, res) => {
+      const indexPath = path.join(distPath, 'index.html');
+      if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+      } else {
+        res.status(200).send('<!doctype html><html><head><meta http-equiv="refresh" content="3"><title>Mumbai Bazar</title></head><body><p>Starting Mumbai Bazar, please wait...</p></body></html>');
+      }
+    });
+  }
 
-if (!isProd) {
-  // Developer Mode - Integrate Vite programmatically as middleware
-  const { createServer: createViteServer } = await import('vite');
-  const vite = await createViteServer({
-    server: { middlewareMode: true },
-    appType: 'spa',
+  // Start Node Server
+  const server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`[Mumbai Bazar] Full-Stack Server active on http://0.0.0.0:${PORT}`);
   });
-  app.use(vite.middlewares);
-} else {
-  // Production Mode - Serve static files from /dist
-  const distPath = path.resolve(__dirname, './dist');
-  app.use(express.static(distPath));
-  
-  // SPA Fallback: Any unhandled routes serve index.html
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(distPath, 'index.html'));
+
+  process.on('SIGTERM', () => {
+    server.close(() => {
+      process.exit(0);
+    });
   });
 }
 
-// Start Node Server on port 3000
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`[Mumbai Bazar] Full-Stack Server active on http://0.0.0.0:${PORT}`);
-});
+if (!process.env.VERCEL) {
+  startServer();
+}
+
+export default app;

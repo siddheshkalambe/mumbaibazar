@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, AuditLog, AppSettings } from '../types.js';
+import { useToast } from '../context/ToastContext.tsx';
 import { 
   Settings, Key, History, Activity, ShieldAlert, Globe, Server, Save, 
   UserPlus, Mail, Phone, Lock, Eye, EyeOff, Search, Clock
@@ -10,6 +11,7 @@ interface SuperAdminPortalProps {
 }
 
 export default function SuperAdminPortal({ currentUser }: SuperAdminPortalProps) {
+  const { success, error, info } = useToast();
   const [activeTab, setActiveTab] = useState<'settings' | 'admins' | 'audit_logs'>('settings');
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
@@ -106,9 +108,10 @@ export default function SuperAdminPortal({ currentUser }: SuperAdminPortalProps)
       });
       if (res.ok) {
         setSettingsSuccess('Platform global settings updated successfully.');
+        success('Platform global settings updated successfully.', 'Settings Saved');
         setTimeout(() => setSettingsSuccess(''), 3000);
       } else {
-        alert('Failed to save settings.');
+        error('Failed to save system settings.');
       }
     } catch (err) {
       console.error(err);

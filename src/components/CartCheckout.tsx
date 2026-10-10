@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Product, User, OrderItem, Coupon } from '../types.js';
+import { useToast } from '../context/ToastContext.tsx';
 import { Trash, Tag, ShieldCheck, Phone, MapPin, CreditCard, ShoppingBag, ArrowLeft } from 'lucide-react';
 
 interface CartItem {
@@ -26,6 +27,7 @@ export default function CartCheckout({
   onBackToShopping,
   onOrderPlaced
 }: CartCheckoutProps) {
+  const { success, error } = useToast();
   
   // Checkout address inputs
   const [shippingAddress, setShippingAddress] = useState(currentUser?.address || '');
@@ -42,6 +44,25 @@ export default function CartCheckout({
   
   const [loading, setLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState('');
+  const [standardDeliveryCharge, setStandardDeliveryCharge] = useState<number>(50);
+
+  // Fetch standard delivery charge from global settings
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const res = await fetch('/api/settings');
+        if (res.ok) {
+          const data = await res.json();
+          if (typeof data.shippingCharge === 'number') {
+            setStandardDeliveryCharge(data.shippingCharge);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load global settings", err);
+      }
+    };
+    fetchSettings();
+  }, []);
 
   // Fetch active marketplace coupons dynamically from server
   useEffect(() => {
@@ -78,8 +99,8 @@ export default function CartCheckout({
     return sum + (discountedPrice * item.quantity);
   }, 0);
 
-  // standard shipping is 50, free above 1000
-  const deliveryCharge = subtotal >= 1000 ? 0 : 50;
+  // standard shipping uses configured setting, free above 1000
+  const deliveryCharge = subtotal >= 1000 ? 0 : standardDeliveryCharge;
 
   // Coupon calculations
   let couponDiscount = 0;
@@ -110,8 +131,10 @@ export default function CartCheckout({
 
       setActiveCoupon(data);
       setCouponSuccess(`Success! Coupon "${data.code}" applied: ${data.type === 'Percentage' ? `${data.value}% discount` : `₹${data.value} flat off`}`);
+      success(`Coupon "${data.code}" applied successfully!`, 'Discount Applied');
     } catch (err: any) {
       setCouponError(err.message);
+      error(err.message || 'Invalid coupon code');
       setActiveCoupon(null);
     }
   };
@@ -122,6 +145,7 @@ export default function CartCheckout({
 
     if (!currentUser) {
       setCheckoutError('Please login to place an order.');
+      error('Please login to complete checkout.', 'Authentication Required');
       return;
     }
 
@@ -132,6 +156,7 @@ export default function CartCheckout({
 
     if (!shippingAddress.trim() || !phoneNumber.trim()) {
       setCheckoutError('Please fill in shipping address and phone number.');
+      error('Please provide a valid shipping address and phone number.', 'Missing Details');
       return;
     }
 
@@ -175,9 +200,11 @@ export default function CartCheckout({
       }
 
       onClearCart();
+      success(`Order placed successfully! Order ID #${data.id.substring(0, 10)}`, 'Order Confirmed');
       onOrderPlaced(data); // navigates to order_tracking
     } catch (err: any) {
       setCheckoutError(err.message);
+      error(err.message || 'Failed to place order.', 'Order Error');
     } finally {
       setLoading(false);
     }
@@ -437,7 +464,9 @@ export default function CartCheckout({
                 <div className="flex justify-between">
                   <span>Shipping & Delivery Fee</span>
                   {deliveryCharge === 0 ? (
-                    <span className="text-emerald-500 font-bold">FREE (Above ₹1000)</span>
+                    <span className="text-emerald-500 font-bold">
+                      {standardDeliveryCharge === 0 ? 'FREE' : 'FREE (Above ₹1000)'}
+                    </span>
                   ) : (
                     <span className="font-mono font-bold text-stone-850 dark:text-white">₹{deliveryCharge}</span>
                   )}

@@ -11,6 +11,7 @@ import SellerDashboard from './components/SellerDashboard.js';
 import AdminPortal from './components/AdminPortal.js';
 import SuperAdminPortal from './components/SuperAdminPortal.js';
 import AuthPages from './components/AuthPages.js';
+import { useToast } from './context/ToastContext.tsx';
 import { ShieldAlert, RefreshCw, ShoppingBag, AlertTriangle } from 'lucide-react';
 
 interface CartItem {
@@ -19,6 +20,7 @@ interface CartItem {
 }
 
 export default function App() {
+  const { showCartToast, info, success } = useToast();
   const [page, setPage] = useState<
     'home' | 'product_details' | 'cart_checkout' | 'order_history' | 'order_tracking' | 'profile' | 'seller_dashboard' | 'admin_portal' | 'super_admin' | 'auth'
   >('home');
@@ -112,7 +114,9 @@ export default function App() {
       }
       return [...prev, { product, quantity: qty }];
     });
-    alert(`Successfully added ${qty} unit(s) of "${product.title}" to your cart!`);
+    showCartToast(product, qty, () => {
+      setPage('cart_checkout');
+    });
   };
 
   const handleUpdateCartQty = (productId: string, quantity: number) => {
@@ -134,7 +138,7 @@ export default function App() {
     setCurrentUser(null);
     setCartItems([]);
     setPage('home');
-    alert('You have logged out successfully.');
+    info('You have logged out successfully.', 'Logged Out');
   };
 
   const handleAuthSuccess = (user: User) => {

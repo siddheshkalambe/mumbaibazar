@@ -31,7 +31,6 @@ export default function AuthPages({ onLoginSuccess, onBackToHome, initialRole = 
   const [showGoogleModal, setShowGoogleModal] = useState(false);
   const [customGoogleEmail, setCustomGoogleEmail] = useState('');
   const [customGoogleName, setCustomGoogleName] = useState('');
-  const [showCustomGoogleInput, setShowCustomGoogleInput] = useState(false);
 
   const handleGoogleAuth = async (googleEmail: string, googleName?: string, googleAvatar?: string) => {
     if (!googleEmail || !googleEmail.trim()) {
@@ -481,7 +480,7 @@ export default function AuthPages({ onLoginSuccess, onBackToHome, initialRole = 
             </button>
 
             {/* Interactive Instant Access Accounts */}
-            <div className="space-y-2 pt-2 border-t border-stone-100 dark:border-zinc-800">
+             {/* <div className="space-y-2 pt-2 border-t border-stone-100 dark:border-zinc-800">
               <span className="block text-xs font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1">
                 ⚡ One-Click instant Access logins:
               </span>
@@ -523,7 +522,7 @@ export default function AuthPages({ onLoginSuccess, onBackToHome, initialRole = 
                   <p className="text-[9px] text-amber-600/70 dark:text-amber-400/70 font-mono">Ph: 9876543210</p>
                 </button>
               </div>
-            </div>
+            </div>*/}
 
             {/* Google Login Trigger */}
             {(selectedRole === 'buyer' || selectedRole === 'seller') && (
@@ -572,7 +571,7 @@ export default function AuthPages({ onLoginSuccess, onBackToHome, initialRole = 
 
       </div>
 
-      {/* Google Account Selector Modal */}
+      {/* Google Sign-In Modal */}
       {showGoogleModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white dark:bg-zinc-900 border border-stone-200 dark:border-zinc-800 rounded-3xl max-w-md w-full p-6 shadow-2xl relative overflow-hidden">
@@ -586,13 +585,12 @@ export default function AuthPages({ onLoginSuccess, onBackToHome, initialRole = 
                   <path fill="#FBBC05" d="M5.84 14.1c-.22-.66-.35-1.36-.35-2.1s.13-1.44.35-2.1V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.62z"/>
                   <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
                 </svg>
-                <span className="text-sm font-bold text-stone-900 dark:text-white">Google Accounts</span>
+                <span className="text-sm font-bold text-stone-900 dark:text-white">Sign in with Google</span>
               </div>
               <button 
                 type="button" 
                 onClick={() => {
                   setShowGoogleModal(false);
-                  setShowCustomGoogleInput(false);
                 }}
                 className="text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 p-1.5 rounded-full hover:bg-stone-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
               >
@@ -601,122 +599,51 @@ export default function AuthPages({ onLoginSuccess, onBackToHome, initialRole = 
             </div>
 
             <div className="py-4">
-              <h3 className="text-base font-bold text-stone-900 dark:text-white">Choose an account</h3>
+              <h3 className="text-base font-bold text-stone-900 dark:text-white">Sign in to your Google Account</h3>
               <p className="text-xs text-stone-500 dark:text-zinc-400 mt-0.5">
-                to continue to <strong className="text-amber-600 dark:text-amber-400">Mumbai Bazar</strong>
+                to continue to <strong className="text-amber-600 dark:text-amber-400">Mumbai Bazar</strong> as {selectedRole === 'seller' ? 'Seller' : 'Buyer'}
               </p>
 
-              {/* Account List */}
-              {!showCustomGoogleInput ? (
-                <div className="mt-4 space-y-2">
+              <div className="mt-4 space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-stone-600 dark:text-zinc-400 mb-1">Google Email Address *</label>
+                  <input 
+                    type="email"
+                    value={customGoogleEmail}
+                    onChange={(e) => setCustomGoogleEmail(e.target.value)}
+                    placeholder="e.g. name@gmail.com"
+                    autoFocus
+                    className="w-full p-2.5 bg-stone-50 dark:bg-zinc-800 border border-stone-200 dark:border-zinc-700 rounded-xl text-xs text-stone-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-stone-600 dark:text-zinc-400 mb-1">Display Name (Optional)</label>
+                  <input 
+                    type="text"
+                    value={customGoogleName}
+                    onChange={(e) => setCustomGoogleName(e.target.value)}
+                    placeholder="e.g. Siddhesh Kalambe"
+                    className="w-full p-2.5 bg-stone-50 dark:bg-zinc-800 border border-stone-200 dark:border-zinc-700 rounded-xl text-xs text-stone-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+                <div className="flex gap-2 pt-2">
                   <button
                     type="button"
-                    onClick={() => handleGoogleAuth('siddheshkalambe12@gmail.com', 'Siddhesh Kalambe', 'https://api.dicebear.com/7.x/adventurer/svg?seed=Siddhesh')}
-                    disabled={loading}
-                    className="w-full p-3 flex items-center justify-between bg-stone-50 hover:bg-stone-100 dark:bg-zinc-800/50 dark:hover:bg-zinc-800 border border-stone-200/80 dark:border-zinc-700/80 rounded-2xl transition-all text-left cursor-pointer group"
+                    onClick={() => setShowGoogleModal(false)}
+                    className="flex-1 py-2.5 bg-stone-100 hover:bg-stone-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-stone-700 dark:text-zinc-300 text-xs font-bold rounded-xl cursor-pointer transition-colors"
                   >
-                    <div className="flex items-center gap-3">
-                      <img 
-                        src="https://api.dicebear.com/7.x/adventurer/svg?seed=Siddhesh" 
-                        alt="Siddhesh" 
-                        className="w-9 h-9 rounded-full bg-amber-100 dark:bg-amber-900/40 p-0.5 border border-amber-300 dark:border-amber-700" 
-                      />
-                      <div>
-                        <p className="text-xs font-bold text-stone-900 dark:text-white group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">Siddhesh Kalambe</p>
-                        <p className="text-[11px] text-stone-500 dark:text-zinc-400">siddheshkalambe12@gmail.com</p>
-                      </div>
-                    </div>
-                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/60 dark:text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">Verified</span>
+                    Cancel
                   </button>
-
                   <button
                     type="button"
-                    onClick={() => handleGoogleAuth('buyer@mumbaibazar.com', 'Mumbai Buyer', 'https://api.dicebear.com/7.x/adventurer/svg?seed=Buyer')}
-                    disabled={loading}
-                    className="w-full p-3 flex items-center justify-between bg-stone-50 hover:bg-stone-100 dark:bg-zinc-800/50 dark:hover:bg-zinc-800 border border-stone-200/80 dark:border-zinc-700/80 rounded-2xl transition-all text-left cursor-pointer group"
+                    onClick={() => handleGoogleAuth(customGoogleEmail, customGoogleName)}
+                    disabled={loading || !customGoogleEmail.trim()}
+                    className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-stone-950 text-xs font-bold rounded-xl cursor-pointer shadow-sm transition-all"
                   >
-                    <div className="flex items-center gap-3">
-                      <img 
-                        src="https://api.dicebear.com/7.x/adventurer/svg?seed=Buyer" 
-                        alt="Buyer" 
-                        className="w-9 h-9 rounded-full bg-stone-200 dark:bg-zinc-700 p-0.5" 
-                      />
-                      <div>
-                        <p className="text-xs font-bold text-stone-900 dark:text-white group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">Mumbai Bazar Customer</p>
-                        <p className="text-[11px] text-stone-500 dark:text-zinc-400">buyer@mumbaibazar.com</p>
-                      </div>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleGoogleAuth('seller@mumbaibazar.com', 'Mumbai Seller', 'https://api.dicebear.com/7.x/adventurer/svg?seed=Seller')}
-                    disabled={loading}
-                    className="w-full p-3 flex items-center justify-between bg-stone-50 hover:bg-stone-100 dark:bg-zinc-800/50 dark:hover:bg-zinc-800 border border-stone-200/80 dark:border-zinc-700/80 rounded-2xl transition-all text-left cursor-pointer group"
-                  >
-                    <div className="flex items-center gap-3">
-                      <img 
-                        src="https://api.dicebear.com/7.x/adventurer/svg?seed=Seller" 
-                        alt="Seller" 
-                        className="w-9 h-9 rounded-full bg-stone-200 dark:bg-zinc-700 p-0.5" 
-                      />
-                      <div>
-                        <p className="text-xs font-bold text-stone-900 dark:text-white group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">Mumbai Bazar Merchant</p>
-                        <p className="text-[11px] text-stone-500 dark:text-zinc-400">seller@mumbaibazar.com</p>
-                      </div>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setShowCustomGoogleInput(true)}
-                    className="w-full p-3 flex items-center gap-3 bg-white hover:bg-stone-50 dark:bg-zinc-850 dark:hover:bg-zinc-800 border border-dashed border-stone-300 dark:border-zinc-700 rounded-2xl transition-all text-left cursor-pointer text-xs font-semibold text-stone-700 dark:text-zinc-300"
-                  >
-                    <PlusCircle className="w-5 h-5 text-amber-500" />
-                    <span>Use another Google account</span>
+                    {loading ? 'Authenticating...' : 'Sign In'}
                   </button>
                 </div>
-              ) : (
-                <div className="mt-4 space-y-3">
-                  <div>
-                    <label className="block text-xs font-medium text-stone-600 dark:text-zinc-400 mb-1">Google Email *</label>
-                    <input 
-                      type="email"
-                      value={customGoogleEmail}
-                      onChange={(e) => setCustomGoogleEmail(e.target.value)}
-                      placeholder="e.g. name@gmail.com"
-                      className="w-full p-2.5 bg-stone-50 dark:bg-zinc-800 border border-stone-200 dark:border-zinc-700 rounded-xl text-xs text-stone-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-stone-600 dark:text-zinc-400 mb-1">Display Name (Optional)</label>
-                    <input 
-                      type="text"
-                      value={customGoogleName}
-                      onChange={(e) => setCustomGoogleName(e.target.value)}
-                      placeholder="e.g. Siddhesh K"
-                      className="w-full p-2.5 bg-stone-50 dark:bg-zinc-800 border border-stone-200 dark:border-zinc-700 rounded-xl text-xs text-stone-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
-                    />
-                  </div>
-                  <div className="flex gap-2 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowCustomGoogleInput(false)}
-                      className="flex-1 py-2 bg-stone-100 dark:bg-zinc-800 text-stone-700 dark:text-zinc-300 text-xs font-bold rounded-xl cursor-pointer"
-                    >
-                      Back
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleGoogleAuth(customGoogleEmail, customGoogleName)}
-                      disabled={loading || !customGoogleEmail.trim()}
-                      className="flex-1 py-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-stone-950 text-xs font-bold rounded-xl cursor-pointer shadow-sm transition-all"
-                    >
-                      {loading ? 'Authenticating...' : 'Sign In with Google'}
-                    </button>
-                  </div>
-                </div>
-              )}
+              </div>
             </div>
 
             <div className="pt-3 border-t border-stone-100 dark:border-zinc-800 text-center">

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Product, User, ProductReview } from '../types.js';
+import { useToast } from '../context/ToastContext.tsx';
 import { Star, Heart, ShoppingCart, ArrowLeft, ShieldCheck, RefreshCw, Truck, Trash, Share2, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface ProductDetailsProps {
@@ -17,6 +18,7 @@ export default function ProductDetails({
   onAddToCart,
   onProductClick
 }: ProductDetailsProps) {
+  const { success, error, info } = useToast();
   const [product, setProduct] = useState<Product>(initialProduct);
   const [selectedImage, setSelectedImage] = useState(initialProduct.primaryImage);
   const [zoomStyle, setZoomStyle] = useState<React.CSSProperties>({ backgroundPosition: '0% 0%' });
@@ -32,6 +34,26 @@ export default function ProductDetails({
   const [wishlist, setWishlist] = useState<string[]>(() => {
     return JSON.parse(localStorage.getItem('mumbai_bazar_wishlist') || '[]');
   });
+
+  const [standardDeliveryCharge, setStandardDeliveryCharge] = useState<number>(50);
+
+  // Fetch standard delivery charge from global settings
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const res = await fetch('/api/settings');
+        if (res.ok) {
+          const data = await res.json();
+          if (typeof data.shippingCharge === 'number') {
+            setStandardDeliveryCharge(data.shippingCharge);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load settings in ProductDetails:', err);
+      }
+    };
+    fetchSettings();
+  }, []);
 
   const finalPrice = product.price * (1 - product.discount/100);
 
@@ -135,13 +157,15 @@ export default function ProductDetails({
         headers: { 'Authorization': `Bearer ${localStorage.getItem('mumbai_bazar_token')}` }
       });
       if (res.ok) {
+        success('Review deleted successfully.', 'Review Removed');
         fetchProductDetails(product.id);
       } else {
         const data = await res.json();
-        alert(data.error || 'Failed to delete review');
+        error(data.error || 'Failed to delete review');
       }
     } catch (err) {
       console.error(err);
+      error('An error occurred while deleting the review.');
     }
   };
 
@@ -150,8 +174,10 @@ export default function ProductDetails({
     let updated;
     if (wishlist.includes(product.id)) {
       updated = wishlist.filter(id => id !== product.id);
+      info(`Removed "${product.title}" from wishlist.`, 'Wishlist Updated');
     } else {
       updated = [...wishlist, product.id];
+      success(`Added "${product.title}" to wishlist!`, 'Saved to Wishlist');
     }
     setWishlist(updated);
     localStorage.setItem('mumbai_bazar_wishlist', JSON.stringify(updated));
@@ -160,7 +186,7 @@ export default function ProductDetails({
   // Simple copy share link simulator
   const handleShare = () => {
     navigator.clipboard.writeText(window.location.href);
-    alert('Product link copied to clipboard!');
+    success('Product link copied to clipboard!', 'Link Copied');
   };
 
   return (
@@ -329,7 +355,7 @@ export default function ProductDetails({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 mt-6 py-4 px-4 bg-stone-50 dark:bg-zinc-850 rounded-2xl border border-stone-100 dark:border-zinc-800">
                   <div className="flex items-center gap-2.5 text-xs text-stone-600 dark:text-zinc-300">
                     <Truck className="w-4 h-4 text-amber-500 flex-shrink-0" />
-                    <span>COD Doorstep Delivery (₹50 Fee)</span>
+                    <span>COD Doorstep Delivery ({standardDeliveryCharge === 0 ? 'FREE' : `₹${standardDeliveryCharge} Fee`})</span>
                   </div>
                   <div className="flex items-center gap-2.5 text-xs text-stone-600 dark:text-zinc-300">
                     <ShieldCheck className="w-4 h-4 text-amber-500 flex-shrink-0" />

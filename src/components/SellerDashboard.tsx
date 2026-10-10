@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, Product, Order, Category } from '../types.js';
+import { useToast } from '../context/ToastContext.tsx';
 import { 
   Plus, Edit, Trash, Copy, EyeOff, Archive, CheckCircle, Clock, AlertTriangle, 
   TrendingUp, BarChart3, Package, ShoppingCart, DollarSign, Users, X, MapPin, Eye, Printer, FileText
@@ -10,6 +11,7 @@ interface SellerDashboardProps {
 }
 
 export default function SellerDashboard({ currentUser }: SellerDashboardProps) {
+  const { success, error, info } = useToast();
   const [activeTab, setActiveTab] = useState<'overview' | 'products' | 'orders'>('overview');
   const [stats, setStats] = useState<any>(null);
   const [salesHistory, setSalesHistory] = useState<any[]>([]);
@@ -51,30 +53,74 @@ export default function SellerDashboard({ currentUser }: SellerDashboardProps) {
   const [rejectModalOrder, setRejectModalOrder] = useState<Order | null>(null);
   const [rejectReason, setRejectReason] = useState<string>('Out of stock / Store unable to fulfill');
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, target: 'primary' | 'list') => {
-    const file = e.target.files?.[0];
-    if (file) {
+  const compressImageFile = (file: File, maxWidth = 1000, quality = 0.82): Promise<string> => {
+    return new Promise((resolve) => {
       const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64 = reader.result as string;
-        if (target === 'primary') {
-          setPrimaryImage(base64);
+      reader.onerror = () => resolve('');
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onerror = () => resolve((event.target?.result as string) || '');
+        img.onload = () => {
+          let width = img.width;
+          let height = img.height;
+          if (width > maxWidth || height > maxWidth) {
+            if (width > height) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            } else {
+              width = Math.round((width * maxWidth) / height);
+              height = maxWidth;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve((event.target?.result as string) || '');
+            return;
+          }
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
+          resolve(compressedBase64);
+        };
+        img.src = (event.target?.result as string) || '';
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, target: 'primary' | 'list') => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      try {
+        const compressedBase64 = await compressImageFile(file);
+        if (!compressedBase64) continue;
+
+        if (target === 'primary' && i === 0) {
+          setPrimaryImage(compressedBase64);
           setImagesList((prev) => {
-            // Replace or prepend
             const filtered = prev.filter(img => img !== primaryImage);
-            return [base64, ...filtered];
+            return [compressedBase64, ...filtered];
           });
         } else {
           setImagesList((prev) => {
-            if (!prev.includes(base64)) {
-              return [...prev, base64];
+            if (!prev.includes(compressedBase64)) {
+              return [...prev, compressedBase64];
             }
             return prev;
           });
+          setPrimaryImage((curr) => curr || compressedBase64);
         }
-      };
-      reader.readAsDataURL(file);
+      } catch (err) {
+        console.error("Error processing image file:", err);
+      }
     }
+    // reset input value so re-selecting same file works
+    e.target.value = '';
   };
   
   const [specKey, setSpecKey] = useState('');
@@ -222,16 +268,20 @@ export default function SellerDashboard({ currentUser }: SellerDashboardProps) {
 
       if (res.ok) {
         setShowProductModal(false);
-        setSuccessMsg(editingProduct ? 'Product catalog item updated successfully!' : 'Success! Product created and submitted for Admin approval. You can now preview it on the homepage marketplace.');
+        const msg = editingProduct ? 'Product catalog item updated successfully!' : 'Success! Product created and submitted for Admin approval.';
+        setSuccessMsg(msg);
+        success(msg, editingProduct ? 'Product Updated' : 'Product Created');
         fetchDashboardData();
         setTimeout(() => setSuccessMsg(''), 8000);
       } else {
         const data = await res.json();
         setFormError(data.error || 'Failed to save product');
+        error(data.error || 'Failed to save product', 'Save Error');
       }
     } catch (err) {
       console.error(err);
       setFormError('Network error saving product catalog.');
+      error('Network error saving product catalog.', 'Network Error');
     }
   };
 
@@ -243,7 +293,9 @@ export default function SellerDashboard({ currentUser }: SellerDashboardProps) {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${localStorage.getItem('mumbai_bazar_token')}` }
       });
-      if (!res.ok) {
+      if (res.ok) {
+        info('Product removed from catalog.', 'Product Deleted');
+      } else {
         fetchDashboardData();
       }
     } catch (err) {
@@ -267,10 +319,12 @@ export default function SellerDashboard({ currentUser }: SellerDashboardProps) {
         })
       });
       if (res.ok) {
+        success(`Duplicate copy created for "${p.title}"!`, 'Product Duplicated');
         fetchDashboardData();
       }
     } catch (err) {
       console.error(err);
+      error('Failed to duplicate product.');
     }
   };
 
@@ -1154,6 +1208,7 @@ export default function SellerDashboard({ currentUser }: SellerDashboardProps) {
                             <input 
                               type="file" 
                               accept="image/*" 
+                              multiple
                               onChange={(e) => handleFileChange(e, 'list')} 
                               className="w-full text-xs text-stone-500 dark:text-zinc-400 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-amber-500/10 file:text-amber-600 dark:file:text-amber-400 hover:file:bg-amber-500/20"
                             />

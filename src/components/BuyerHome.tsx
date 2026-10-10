@@ -29,29 +29,78 @@ export default function BuyerHome({ onProductClick, onAddToCart, searchValue, cu
 
   // Main Banners/Sliders state
   const [currentSlide, setCurrentSlide] = useState(0);
-  const banners = [
-    {
-      id: 1,
-      title: "Ganesh Chaturthi Special Bazaar 🏮",
-      desc: "Get up to 30% flat discount on Traditional Paithani Silk Sarees, home decor canvas frames, and pooja essentials.",
-      tag: "Festive Sale",
-      image: "https://images.unsplash.com/photo-1561375545-be02bfdf0b87?w=1200&auto=format&fit=crop&q=80",
-    },
-    {
-      id: 2,
-      title: "Monsoon Masala Chai Craze ☕",
-      desc: "Experience cutting-edge Tapri tea vibes with authentic spices directly sourced fromCrawford Market Mumbai.",
-      tag: "Best Sellers",
-      image: "https://images.unsplash.com/photo-1594631252845-29fc4cc8cde9?w=1200&auto=format&fit=crop&q=80",
-    },
-    {
-      id: 3,
-      title: "Premium Ratnagiri Alphonso Hapus 🥭",
-      desc: "Naturally ripened, premium golden mangoes box directly delivered to your door. Fresh and delicious!",
-      tag: "Flash Sale",
-      image: "https://images.unsplash.com/photo-1601004890684-d8cbf643f5f2?w=1200&auto=format&fit=crop&q=80",
-    }
-  ];
+ const banners = [
+  {
+    id: 1,
+    title: "Mumbai Bazar Grand Opening 🎉",
+    desc: "Shop from hundreds of trusted local sellers across Mumbai. Fashion, Electronics, Grocery, Home Decor, Beauty and much more—all in one marketplace.",
+    tag: "New Arrival",
+    image: "https://images.unsplash.com/photo-1520607162513-77705c0f0d4a?w=1200&auto=format&fit=crop&q=80",
+  },
+  {
+    id: 2,
+    title: "Ganesh Chaturthi Festival Offers 🪔",
+    desc: "Celebrate with exclusive discounts on idols, decorations, pooja essentials, sweets, flowers and festive gifts from local vendors.",
+    tag: "Festival Sale",
+    image: "https://images.unsplash.com/photo-1561375545-be02bfdf0b87?w=1200&auto=format&fit=crop&q=80",
+  },
+  {
+    id: 3,
+    title: "Fashion Week Specials 👗",
+    desc: "Discover trending ethnic wear, western outfits, handbags, footwear and accessories from Mumbai's top fashion sellers.",
+    tag: "Trending",
+    image: "https://images.unsplash.com/photo-1523381210434-271e8be1f52b?w=1200&auto=format&fit=crop&q=80",
+  },
+  {
+    id: 4,
+    title: "Electronics Mega Deals 💻",
+    desc: "Best prices on laptops, smartphones, headphones, smartwatches and accessories with exciting daily offers.",
+    tag: "Hot Deals",
+    image: "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=1200&auto=format&fit=crop&q=80",
+  },
+  {
+    id: 5,
+    title: "Fresh Grocery Delivered 🛒",
+    desc: "Fresh fruits, vegetables, dairy products, spices and household essentials delivered straight to your doorstep.",
+    tag: "Daily Essentials",
+    image: "https://images.unsplash.com/photo-1542838132-92c53300491e?w=1200&auto=format&fit=crop&q=80",
+  },
+  {
+    id: 6,
+    title: "Home & Living Collection 🏡",
+    desc: "Upgrade your home with stylish furniture, décor, lighting, kitchen essentials and premium home accessories.",
+    tag: "Top Picks",
+    image: "https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?w=1200&auto=format&fit=crop&q=80",
+  },
+  {
+    id: 7,
+    title: "Beauty & Personal Care 💄",
+    desc: "Explore skincare, cosmetics, perfumes, wellness products and grooming essentials from trusted brands.",
+    tag: "Best Sellers",
+    image: "https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?w=1200&auto=format&fit=crop&q=80",
+  },
+  {
+    id: 8,
+    title: "Monsoon Mega Sale 🌧️",
+    desc: "Rainwear, umbrellas, waterproof bags, footwear and monsoon essentials with discounts up to 50% OFF.",
+    tag: "Flash Sale",
+    image: "https://images.unsplash.com/photo-1500375592092-40eb2168fd21?w=1200&auto=format&fit=crop&q=80",
+  },
+  {
+    id: 9,
+    title: "Support Local Mumbai Sellers ❤️",
+    desc: "Every purchase helps local businesses grow. Discover unique products from verified sellers across Mumbai.",
+    tag: "Local Business",
+    image: "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=1200&auto=format&fit=crop&q=80",
+  },
+  {
+    id: 10,
+    title: "Today's Flash Deals ⚡",
+    desc: "Limited-time offers on fashion, electronics, groceries and home essentials. Grab your favorites before they're gone.",
+    tag: "Limited Time",
+    image: "https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=1200&auto=format&fit=crop&q=80",
+  },
+];
 
   useEffect(() => {
     const slideInterval = setInterval(() => {
